@@ -1,6 +1,7 @@
 // Copies the runtime secrets from .env into the Trigger.dev prod environment.
+// Authenticates with the prod secret key, or a personal access token if that's what you have.
 // Usage: npm run push-env
-import { configure, envvars } from "@trigger.dev/sdk";
+export {};
 
 const RUNTIME_VARS = [
   "ANTHROPIC_API_KEY",
@@ -12,16 +13,19 @@ const RUNTIME_VARS = [
 ];
 
 const projectRef = process.env.TRIGGER_PROJECT_REF;
-const accessToken = process.env.TRIGGER_ACCESS_TOKEN;
-if (!projectRef || !accessToken) throw new Error("TRIGGER_PROJECT_REF and TRIGGER_ACCESS_TOKEN must be set in .env");
+const token = process.env.TRIGGER_SECRET_KEY || process.env.TRIGGER_ACCESS_TOKEN;
+if (!projectRef || !token) throw new Error("TRIGGER_PROJECT_REF and TRIGGER_SECRET_KEY (or TRIGGER_ACCESS_TOKEN) must be set in .env");
 
-const variables: Record<string, string> = {};
-for (const name of RUNTIME_VARS) {
+const variables = RUNTIME_VARS.map((name) => {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is empty in .env`);
-  variables[name] = value;
-}
+  return { name, value };
+});
 
-configure({ accessToken });
-await envvars.upload(projectRef, "prod", { variables, override: true });
-console.log(`Uploaded ${RUNTIME_VARS.length} variables to Trigger.dev prod: ${RUNTIME_VARS.join(", ")}`);
+const res = await fetch(`https://api.trigger.dev/api/v1/projects/${projectRef}/envvars/prod/import`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ variables, override: true }),
+});
+if (!res.ok) throw new Error(`Upload failed (${res.status}): ${await res.text()}`);
+console.log(`Uploaded to Trigger.dev prod: ${RUNTIME_VARS.join(", ")}`);

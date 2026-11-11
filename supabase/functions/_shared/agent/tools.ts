@@ -1,7 +1,7 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { db, NOTE_COLUMNS, recentMessages, setActiveBook, unwrap, type Book, type FollowUp, type Note } from "../lib/db.ts";
-import { embed, noteEmbeddingText } from "../lib/embeddings.ts";
+import { embed, noteEmbeddingText, tryEmbed } from "../lib/embeddings.ts";
 import { formatInZone } from "./prompt.ts";
 
 /** Per-turn state the tools read and update. */
@@ -44,6 +44,22 @@ async function describeNotes(notes: Note[], extra?: Map<string, Record<string, u
     book_title: n.book_id ? titles.get(n.book_id) ?? null : null,
     ...(extra?.get(n.id) ?? {}),
   }));
+}
+
+/** Fallback when embeddings are unavailable: case-insensitive keyword match on each word of the query. */
+async function keywordSearch(query: string, bookId: string | undefined, limit: number) {
+  const words = [...new Set(query.toLowerCase().match(/[a-z0-9]{4,}/g) ?? [])].slice(0, 8);
+  if (words.length === 0) return { results: [], mode: "keyword" };
+  const fields = ["summary", "authors_words", "user_view", "agent_interpretation", "open_question"];
+  const filter = words.flatMap((w) => fields.map((f) => `${f}.ilike.*${w}*`)).join(",");
+  let q = db().from("notes").select(NOTE_COLUMNS).or(filter);
+  if (bookId) q = q.eq("book_id", bookId);
+  const notes = unwrap(await q.order("created_at", { ascending: false }).limit(limit), "keyword search") as Note[];
+  return {
+    mode: "keyword search (meaning-based search is temporarily unavailable, so related ideas phrased differently may be missed)",
+    results: await describeNotes(notes),
+    connections: await connectionsFor(notes.map((n) => n.id)),
+  };
 }
 
 export function makeTools(ctx: TurnContext) {
@@ -132,7 +148,8 @@ export function makeTools(ctx: TurnContext) {
       open_question: z.string().optional(),
     }),
     run: async (input) => {
-      const embedding = await embed(noteEmbeddingText(input));
+      // Save the note even if indexing fails; the tick indexes notes that are missing an embedding.
+      const embedding = await tryEmbed(noteEmbeddingText(input));
       const note = unwrap(
         await db()
           .from("notes")
@@ -151,7 +168,7 @@ export function makeTools(ctx: TurnContext) {
           .single(),
         "save note",
       );
-      return json({ saved: note });
+      return json({ saved: note, ...(embedding ? {} : { search_index: "pending; it will be searchable shortly" }) });
     },
   });
 
@@ -176,7 +193,7 @@ export function makeTools(ctx: TurnContext) {
         if (value !== undefined) patch[key] = value === "" && key !== "summary" ? null : value;
       }
       const merged = { ...current, ...patch };
-      const embedding = await embed(noteEmbeddingText(merged));
+      const embedding = await tryEmbed(noteEmbeddingText(merged));
       const updated = unwrap(
         await db()
           .from("notes")
@@ -200,7 +217,12 @@ export function makeTools(ctx: TurnContext) {
       limit: z.number().int().min(1).max(15).optional(),
     }),
     run: async ({ query, book_id, limit }) => {
-      const embedding = await embed(query);
+      let embedding: number[];
+      try {
+        embedding = await embed(query);
+      } catch {
+        return json(await keywordSearch(query, book_id, limit ?? 8));
+      }
       const matches = unwrap(
         await db().rpc("match_notes", { query_embedding: embedding, match_count: limit ?? 8, filter_book_id: book_id ?? null }),
         "search notes",

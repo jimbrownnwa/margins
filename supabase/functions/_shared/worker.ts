@@ -1,5 +1,6 @@
 import { runTurn } from "./agent/run.ts";
-import { db, saveMessage, setActiveBook, unwrap, type FollowUp } from "./lib/db.ts";
+import { db, NOTE_COLUMNS, saveMessage, setActiveBook, unwrap, type FollowUp, type Note } from "./lib/db.ts";
+import { noteEmbeddingText, tryEmbed } from "./lib/embeddings.ts";
 import { sendText, sendTyping } from "./lib/telegram.ts";
 
 interface InboxRow {
@@ -74,6 +75,8 @@ export async function tick(): Promise<void> {
   ) as { chat_id: number }[];
   for (const chatId of new Set(pending.map((p) => p.chat_id))) await drainChat(chatId);
 
+  await backfillEmbeddings();
+
   const due = unwrap(await db().rpc("claim_due_follow_ups"), "claim follow-ups") as FollowUp[];
   for (const followUp of due) {
     try {
@@ -92,5 +95,18 @@ export async function tick(): Promise<void> {
       console.error("Follow-up delivery failed; will retry next tick", { id: followUp.id, error: String(e) });
       await db().from("follow_ups").update({ status: "scheduled" }).eq("id", followUp.id).eq("status", "sending");
     }
+  }
+}
+
+/** Indexes notes saved while embeddings were unavailable. Stops at the first failure and retries next tick. */
+async function backfillEmbeddings(): Promise<void> {
+  const notes = unwrap(
+    await db().from("notes").select(NOTE_COLUMNS).is("embedding", null).order("created_at").limit(20),
+    "find unindexed notes",
+  ) as Note[];
+  for (const note of notes) {
+    const embedding = await tryEmbed(noteEmbeddingText(note));
+    if (!embedding) return;
+    unwrap(await db().from("notes").update({ embedding }).eq("id", note.id), "store embedding");
   }
 }

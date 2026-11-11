@@ -12,6 +12,16 @@ export async function embed(text: string): Promise<number[]> {
   return res.data[0]!.embedding;
 }
 
+/** Like embed(), but returns null instead of throwing, so a note can be saved even when OpenAI is down. */
+export async function tryEmbed(text: string): Promise<number[] | null> {
+  try {
+    return await embed(text);
+  } catch (e) {
+    console.error("Embedding failed; note will be indexed later", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 /** The text a note is embedded from: every voice, labelled, so search can match any of them. */
 export function noteEmbeddingText(note: {
   summary: string;

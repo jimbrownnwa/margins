@@ -1,0 +1,28 @@
+{
+  "name": "margins",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "trigger dev",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
+    "push-env": "node --env-file=.env --import tsx scripts/push-env.ts",
+    "deploy:trigger": "node --env-file=.env node_modules/trigger.dev/dist/esm/index.js deploy --env prod",
+    "deploy:webhook": "node --env-file=.env scripts/deploy-webhook.mjs",
+    "set-webhook": "node --env-file=.env --import tsx scripts/set-webhook.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@supabase/supabase-js": "^2.119.0",
+    "@trigger.dev/sdk": "^4.8.4",
+    "openai": "^7.55.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "trigger.dev": "^4.8.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

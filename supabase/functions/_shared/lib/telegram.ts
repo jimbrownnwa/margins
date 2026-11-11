@@ -1,4 +1,4 @@
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.ts";
 
 const MAX_LENGTH = 4000; // Telegram's hard limit is 4096 characters per message.
 

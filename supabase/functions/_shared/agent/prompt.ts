@@ -1,4 +1,4 @@
-import type { Book, ChatState, FollowUp } from "../lib/db";
+import type { Book, ChatState, FollowUp } from "../lib/db.ts";
 
 /**
  * Stable persona and rules. Kept byte-identical between requests so it stays in the prompt cache;

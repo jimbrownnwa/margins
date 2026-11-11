@@ -1,9 +1,8 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { runs, tasks } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { db, NOTE_COLUMNS, recentMessages, setActiveBook, unwrap, type Book, type FollowUp, type Note } from "../lib/db";
-import { embed, noteEmbeddingText } from "../lib/embeddings";
-import { formatInZone } from "./prompt";
+import { db, NOTE_COLUMNS, recentMessages, setActiveBook, unwrap, type Book, type FollowUp, type Note } from "../lib/db.ts";
+import { embed, noteEmbeddingText } from "../lib/embeddings.ts";
+import { formatInZone } from "./prompt.ts";
 
 /** Per-turn state the tools read and update. */
 export interface TurnContext {
@@ -321,9 +320,7 @@ export function makeTools(ctx: TurnContext) {
           .single(),
         "save follow-up",
       ) as { id: string };
-
-      const handle = await tasks.trigger("deliver-follow-up", { followUpId: row.id }, { delay: due });
-      unwrap(await db().from("follow_ups").update({ trigger_run_id: handle.id }).eq("id", row.id), "store run id");
+      // The once-a-minute tick sends it when due_at passes.
       return json({ scheduled: { id: row.id, due_local: formatInZone(due, ctx.timezone) } });
     },
   });
@@ -334,19 +331,15 @@ export function makeTools(ctx: TurnContext) {
     inputSchema: z.object({ follow_up_id: uuid }),
     run: async ({ follow_up_id }) => {
       const row = unwrap(
-        await db().from("follow_ups").select("id, status, trigger_run_id").eq("id", follow_up_id).maybeSingle(),
+        await db().from("follow_ups").select("id, status").eq("id", follow_up_id).maybeSingle(),
         "load follow-up",
-      ) as Pick<FollowUp, "id" | "status" | "trigger_run_id"> | null;
+      ) as Pick<FollowUp, "id" | "status"> | null;
       if (!row) return json({ error: "No follow-up with that id." });
       if (row.status !== "scheduled") return json({ error: `That follow-up is already ${row.status}.` });
-      unwrap(await db().from("follow_ups").update({ status: "cancelled" }).eq("id", follow_up_id), "cancel follow-up");
-      if (row.trigger_run_id) {
-        try {
-          await runs.cancel(row.trigger_run_id);
-        } catch {
-          // The delivery task also checks status, so a run that can't be cancelled will do nothing.
-        }
-      }
+      unwrap(
+        await db().from("follow_ups").update({ status: "cancelled" }).eq("id", follow_up_id).eq("status", "scheduled"),
+        "cancel follow-up",
+      );
       return json({ cancelled: follow_up_id });
     },
   });

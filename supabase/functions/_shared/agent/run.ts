@@ -1,8 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { logger } from "@trigger.dev/sdk";
-import { db, getChatState, listBooks, recentMessages, unwrap, type FollowUp } from "../lib/db";
-import { buildContext, PERSONA } from "./prompt";
-import { makeTools, type TurnContext } from "./tools";
+import { db, getChatState, listBooks, recentMessages, unwrap, type FollowUp } from "../lib/db.ts";
+import { buildContext, PERSONA } from "./prompt.ts";
+import { makeTools, type TurnContext } from "./tools.ts";
 
 const MODEL = "claude-opus-5-5";
 const HISTORY_LIMIT = 40;
@@ -16,7 +15,8 @@ export interface TurnResult {
 }
 
 export async function runTurn(chatId: number, userText: string): Promise<TurnResult> {
-  client ??= new Anthropic();
+  // A turn must finish inside the Edge Function wall-clock limit, so keep request timeouts tight.
+  client ??= new Anthropic({ timeout: 90_000, maxRetries: 1 });
 
   const state = await getChatState(chatId);
   const [books, followUps, history] = await Promise.all([
@@ -59,7 +59,7 @@ export async function runTurn(chatId: number, userText: string): Promise<TurnRes
     max_iterations: 12,
   });
 
-  logger.info("turn finished", {
+  console.log("turn finished", {
     stop_reason: final.stop_reason,
     usage: final.usage,
     model: final.model,

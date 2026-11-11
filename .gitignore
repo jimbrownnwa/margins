@@ -2,6 +2,4 @@
 .env.*
 !.env.example
 node_modules/
-.trigger/
-dist/
-.webhook-secrets.env
+.function-secrets.env

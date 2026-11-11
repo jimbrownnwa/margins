@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.ts";
 
 // OpenAI is used only for embeddings (finding related notes). All conversation runs on Claude.
 const MODEL = "text-embedding-3-small"; // 1536 dimensions, matches notes.embedding

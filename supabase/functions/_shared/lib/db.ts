@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.ts";
 
 let client: SupabaseClient | undefined;
 
@@ -56,8 +56,7 @@ export interface FollowUp {
   kind: "revisit" | "experiment";
   message: string;
   due_at: string;
-  trigger_run_id: string | null;
-  status: "scheduled" | "sent" | "cancelled";
+  status: "scheduled" | "sending" | "sent" | "cancelled";
 }
 
 export const NOTE_COLUMNS =
